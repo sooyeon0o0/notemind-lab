@@ -1,0 +1,16 @@
+# Local environment files (keep committed examples)
+**/.env
+**/.env.*
+!**/.env.example
+
+# Local package and language caches
+/.pub-cache/
+__pycache__/
+*.py[cod]
+
+# OS and editor metadata
+.DS_Store
+Thumbs.db
+.idea/
+*.iml
+

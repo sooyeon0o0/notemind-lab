@@ -1,0 +1,8 @@
+**/.env
+**/.env.*
+!**/.env.example
+**/_pycache__/
+supabase/volumes/db/data/
+supabase/volumes/storage/
+supabase/volumes/snippets/*
+!supabase/volumes/snippets/.gitkeep

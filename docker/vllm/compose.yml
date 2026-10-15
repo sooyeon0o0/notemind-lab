@@ -1,0 +1,84 @@
+# Windows WSL2 / Linux + NVIDIA only. macOS: see README.md.
+name: notemind-vllm
+
+x-vllm: &vllm
+  image: ${VLLM_IMAGE:-notemind/vllm-openai:v0.29.0-py314}
+  build:
+    context: .
+    dockerfile: Dockerfile
+    args:
+      VLLM_BASE_IMAGE: ${VLLM_BASE_IMAGE:-vllm/vllm-openai:v0.29.0}
+  restart: unless-stopped
+  ipc: host
+  environment:
+    HF_TOKEN: ${HF_TOKEN:-}
+    VLLM_API_KEY: ${VLLM_API_KEY:?Run python3 ../init-env.py first}
+    VLLM_USE_V2_MODEL_RUNNER: ${VLLM_USE_V2_MODEL_RUNNER:-0}
+  volumes:
+    - huggingface-cache:/root/.cache/huggingface
+  healthcheck:
+    test: ["CMD", "python3", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health', timeout=5)"]
+    interval: 30s
+    timeout: 10s
+    # Allow a fresh Hugging Face model cache to finish downloading.
+    start_period: 60m
+    retries: 10
+  deploy:
+    resources:
+      reservations:
+        devices:
+          - driver: nvidia
+            device_ids: ["${NVIDIA_GPU_ID:-0}"]
+            capabilities: [gpu]
+
+services:
+  chat:
+    <<: *vllm
+    ports:
+      - "${BIND_ADDRESS:-127.0.0.1}:${CHAT_PORT:-8000}:8000"
+    command:
+      - --model
+      - ${CHAT_MODEL:?Set CHAT_MODEL in .env}
+      - --served-model-name
+      - ${CHAT_MODEL_ID:-notemind-chat}
+      - --host
+      - 0.0.0.0
+      - --port
+      - "8000"
+      - --max-model-len
+      - ${CHAT_MAX_MODEL_LEN:-8192}
+      - --gpu-memory-utilization
+      - ${CHAT_GPU_MEMORY_UTILIZATION:-0.57}
+      - --max-num-seqs
+      - ${CHAT_MAX_NUM_SEQS:-4}
+      - --enforce-eager
+
+  embedding:
+    <<: *vllm
+    # Sequential startup makes GPU memory profiling less likely to race.
+    depends_on:
+      chat:
+        condition: service_healthy
+    ports:
+      - "${BIND_ADDRESS:-127.0.0.1}:${EMBEDDING_PORT:-8001}:8000"
+    command:
+      - --model
+      - ${EMBEDDING_MODEL:?Set EMBEDDING_MODEL in .env}
+      - --served-model-name
+      - ${EMBEDDING_MODEL_ID:-notemind-embedding}
+      - --runner
+      - pooling
+      - --host
+      - 0.0.0.0
+      - --port
+      - "8000"
+      - --max-model-len
+      - ${EMBEDDING_MAX_MODEL_LEN:-2048}
+      - --gpu-memory-utilization
+      - ${EMBEDDING_GPU_MEMORY_UTILIZATION:-0.38}
+      - --max-num-seqs
+      - ${EMBEDDING_MAX_NUM_SEQS:-4}
+      - --enforce-eager
+
+volumes:
+  huggingface-cache:
